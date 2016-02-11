@@ -15,3 +15,7 @@
 - Build a ML tree using __make_ML_tree.py__
 
     `make_ML_tree.py -f input.fasta.aln -e .fasta.aln -T 15`
+
+- Filter for only variant sites with  __remove_uninformative_sites.py__
+
+    `remove_uninformative_sites.py -i input.fasta.aln`
