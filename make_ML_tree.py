@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 from Bio import AlignIO
 from decimal import Decimal, ROUND_UP
 
@@ -29,6 +30,32 @@ def parseArgs():
 	parser.add_argument('-k', '--keep', required=False, default=None, action='store_true', help='keep all intermediate files')
 	args = parser.parse_args()
 	return args
+
+class LogPipe(threading.Thread):
+	def __init__(self, level):
+		''' sets up the object with a logger and starts up the thread '''
+		threading.Thread.__init__(self)
+		self.daemon = False
+		self.level = level
+		self.fd_read, self.fd_write = os.pipe()
+		self.pipe_reader = os.fdopen(self.fd_read)
+		self.start()
+
+	def fileno(self):
+		''' returns the write file descriptor of the pipe '''
+		return self.fd_write
+
+	def run(self):
+		''' runs the thread and logs everything '''
+		for line in iter(self.pipe_reader.readline, ''):
+			# logging.debug(line.strip('\n'))
+			logging.log(self.level, line.strip('\n'))
+		self.pipe_reader.close()
+
+	def close(self):
+		''' closes the write end of the pipe '''
+		os.close(self.fd_write)
+
 
 def fa2phy(fasta, outphy):
 	''' converts FastA format into phylip format '''
@@ -50,16 +77,20 @@ def syscall(syscmd, outpath):
 	if outpath is 'dump':
 		with open(os.devnull) as dump:
 			returncode = subprocess.call(syscmd.split(), stdout=dump, stderr=dump, shell=False)
+			if returncode != 0:
+				logging.error('failed system call ' + syscmd)
+				sys.exit('ERROR: failed system call\ncheck the logfile')
 	else:
-		o = tempfile.SpooledTemporaryFile(suffix='stdout')	
-		e = tempfile.SpooledTemporaryFile(suffix='stderr')	
-		returncode = subprocess.call(syscmd.split(), stdout=o, stderr=e, shell=False)
-		# logging.debug(o)
-		# if os.path.getsize(e) > 0:
-		# 	logging.error(e)
-	if returncode != 0:
-		logging.error('failed system call ' + syscmd)
-		sys.exit('failed system call ' + syscmd)
+		o = LogPipe(logging.DEBUG)
+		e = LogPipe(logging.ERROR)
+		s = subprocess.Popen(syscmd.split(), stdout=o, stderr=e)
+		if s.wait() != 0:  #return code
+			logging.error('failed system call ' + syscmd)
+			o.close()
+			e.close()
+			sys.exit('ERROR: failed system call\ncheck the logfile')	
+		o.close()
+		e.close()
 
 def run_PhyML(phylip, base, boots, outpath, freqs, kappa, alpha, search, xopts):
 	''' runs PhyML '''
@@ -67,6 +98,7 @@ def run_PhyML(phylip, base, boots, outpath, freqs, kappa, alpha, search, xopts):
 	syscall(cmd, outpath)
 
 def fill_empty_var(var):
+	''' sets variable to e (estimate in phyml) if empty '''
 	if var is None:
 		logging.notice('unable to parse %s; PhyML will estimate this in subsequent runs' % var)
 		return 'e'
@@ -239,7 +271,7 @@ def main():
 		os.remove('RAxML_bipartitionsBranchLabels' + '.final')
 		logging.info('removed all intermediate files')
 	logging.info('completed')
-	print '\tML inference complete'
+	sys.exit()
 
 if __name__ == '__main__':
 	main()
