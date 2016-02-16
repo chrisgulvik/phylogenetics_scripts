@@ -5,6 +5,7 @@ import argparse
 import glob
 import itertools
 import os
+import sys
 from Bio import AlignIO
 from Bio import SeqIO
 from Bio.Align import AlignInfo
