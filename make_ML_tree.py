@@ -26,6 +26,7 @@ def parseArgs():
 	parser.add_argument('-r', '--raxml', required=False, default='raxmlHPC-PTHREADS-AVX', help='available raxml binary with PTHREADS [raxmlHPC-PTHREADS-AVX]')
 	parser.add_argument('-o', '--outpath', required=False, default='ml_out', help='output folder [`cwd`/ml_out]')
 	parser.add_argument('-b', '--boots', required=False, type=int, default='250', help='number of bootstraps [250]')
+	parser.add_argument('-t', '--trees', required=False, type=int, default='500', help='number of ML trees [50]')
 	parser.add_argument('-T', '--cpus', required=False, type=int, default='1', help='number of CPUs [1]')
 	parser.add_argument('-k', '--keep', required=False, default=None, action='store_true', help='keep all intermediate files')
 	args = parser.parse_args()
@@ -62,7 +63,7 @@ def fa2phy(fasta, outphy):
 	with open(fasta) as handle:
 		records = AlignIO.parse(handle, 'fasta')
 		with open(outphy, 'w') as out:
-			AlignIO.write(records, out, 'phylip-sequential')
+			AlignIO.write(records, out, 'phylip-relaxed')
 
 def dependency(dep):
 	''' checks for binary availability '''
@@ -206,7 +207,7 @@ def main():
 
 	# Calculate parameters and make initial tree
 	run_PhyML(phylip, base, '0', outpath, 'm', 'e', 'e',
-		'SPR', '-m GTR -o lr --quiet --sequential')
+		'SPR', '-m GTR -o lr --quiet')
 	if os.path.isfile(base + '.phy_phyml_stats.txt') and os.path.getsize(base + '.phy_phyml_stats.txt') > 0:
 		os.rename(base + '.phy_phyml_stats.txt', 'init_phyml_stats.txt')
 		os.rename(base + '.phy_phyml_tree.txt', 'init_tree.nwk')
@@ -219,12 +220,12 @@ def main():
 	(alpha, kappa, freqs) = get_PhyML_stats()
 
 	# Find ML topology
-	find_ML_topology = '-s %s -n topology -f d -j -m GTRGAMMA -t init_tree.nwk' % phylip
+	find_ML_topology = '-s %s -n topology -# %s -p 65432 -f d -j -m GTRGAMMA -t init_tree.nwk' % (phylip, opts.trees)
 	run_RAxML(raxml, cpus, find_ML_topology, outpath, base)
 	
 	# Optimize branch lengths of ML topology
 	run_PhyML(phylip, base, '0', outpath, freqs, kappa, alpha,
-		'BEST', '-u RAxML_result.topology -m GTR -o lr --quiet --sequential')
+		'BEST', '-u RAxML_bestTree.topology -m GTR -o lr --quiet')
 	# some PhyML versions (e.g., 20160116) append file extension to output files (.txt)
 	try:
 		os.rename(base + '.phy_phyml_tree', base + '.ML_topol.nwk')
@@ -235,40 +236,39 @@ def main():
 		else:
 			raise
 
-	# Generate 250 boostrap trees
+	# Generate boostrap trees
 	generate_bootstrap_trees = '-n boots -s %s -N %s -f a -m GTRGAMMA -p 65432 -x 54321' % (phylip, opts.boots)
 	run_RAxML(raxml, cpus, generate_bootstrap_trees, outpath, base)
 	
-	# Project boostrap values onto ML topology
+	# Project boostrap values onto best ML topology
 	project_boots_onto_ML_topology = '-n final -t %s.ML_topol.nwk -z RAxML_bootstrap.boots -f b -m GTRGAMMA' % base
 	run_RAxML(raxml, cpus, project_boots_onto_ML_topology, outpath, base)
 	os.rename('RAxML_bipartitions.final', os.path.join(outpath, base + '.bootstrapped_ML.nwk'))
 	
 	# Cleanup the mess I made by default
 	if opts.keep is None:
-		os.remove(base + '.phy')
-		os.remove('RAxML_flagCheck')
-		try:
-			os.remove(base + '.phy_phyml_stats.txt')
-		except OSError as error:
-			if error.errno == 2:
-				os.remove(base + '.phy_phyml_stats')
-			else:
-				raise
+		for phy_files in glob.glob(base + '.phy*'):
+			os.remove(phy_files) # rm "$base".{phy,phy.reduced}
 		for s in ['tree.nwk', 'phyml_stats.txt']:
 			os.remove('init_' + s)
+		if os.path.isfile('RAxML_flagCheck'):
+			os.remove('RAxML_flagCheck')
+
 		# RAxML topology files
-		for junk in glob.glob('RAxML_checkpoint.topology.*'):
-			os.remove(junk)
-		for s in ['bestTree', 'info', 'log', 'result']:
+		for r in ['RAxML_checkpoint.topology.RUN.*', 'RAxML_log.topology.RUN.*', 'RAxML_result.topology.RUN.*']:
+			for junk in r:
+				os.remove(junk)
+		for s in ['bestTree', 'info']:
 			os.remove('RAxML_' + s + '.topology')
 		os.remove(base + '.ML_topol.nwk')
+
 		# RAxML boots files
 		for s in ['bestTree', 'bipartitions', 'bipartitionsBranchLabels', 'bootstrap', 'info']:
 			os.remove('RAxML_' + s + '.boots')
-		# RAxML final files
-		os.remove('RAxML_info' + '.final')
-		os.remove('RAxML_bipartitionsBranchLabels' + '.final')
+
+	# RAxML final files
+		for f in ['RAxML_info', 'RAxML_bipartitionsBranchLabels']:
+			os.remove(f + '.final')
 		logging.info('removed all intermediate files')
 	logging.info('completed')
 	sys.exit()
