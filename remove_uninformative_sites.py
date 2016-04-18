@@ -14,7 +14,6 @@ from Bio.Alphabet import generic_dna
 from Bio.Nexus import Nexus
 from Bio.Seq import Seq
 
-
 def parseArgs():
 	parser = argparse.ArgumentParser(description='Converts an aligned FastA file into an aligned Nexus with only variant sites (especially useful for BEAST)')
 	parser.add_argument('-i', '--infile', help='aligned FastA input file', required=True)
@@ -23,7 +22,8 @@ def parseArgs():
 
 def get_variant_sites(infile):
 	with open(infile, 'r') as input_handle:
-		alignment = AlignIO.read(input_handle, 'fasta')
+		aln = AlignIO.read(input_handle, 'fasta')
+		alignment = fasta_parsed = MultipleSeqAlignment([rec.upper() for rec in aln], annotations=aln.annotations)
 		summary_align = AlignInfo.SummaryInfo(alignment)
 		sequence = (alignment[0].seq)  #arbitrarily chose 1st seq to compare all others to
 
@@ -35,8 +35,9 @@ def get_variant_sites(infile):
 		invariant_position_index = []
 
 		for site in pssm_sequence.pssm:
+			print site
 			#site is a tuple of site_identity and dict of corresponding PSSM keys=nucleotides, vals=scores
-			gap_score = site[1]['-']
+			gap_score = 0#site[1]['-']
 			A_score   = site[1]['A']
 			C_score   = site[1]['C']
 			G_score   = site[1]['G']
