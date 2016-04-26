@@ -255,7 +255,7 @@ def main():
 			os.remove('RAxML_flagCheck')
 
 		# RAxML topology files
-		for r in ['RAxML_checkpoint.topology.RUN.*', 'RAxML_log.topology.RUN.*', 'RAxML_result.topology.RUN.*']:
+		for r in [glob.glob('RAxML_checkpoint.topology.RUN.*'), glob.glob('RAxML_log.topology.RUN.*'), glob.glob('RAxML_result.topology.RUN.*')]:
 			for junk in r:
 				os.remove(junk)
 		for s in ['bestTree', 'info']:
