@@ -23,40 +23,47 @@ def parseArgs():
 def get_variant_sites(infile):
 	with open(infile, 'r') as input_handle:
 		aln = AlignIO.read(input_handle, 'fasta')
-		alignment = fasta_parsed = MultipleSeqAlignment([rec.upper() for rec in aln], annotations=aln.annotations)
+		alignment = MultipleSeqAlignment([rec.upper() for rec in aln], annotations=aln.annotations)
 		summary_align = AlignInfo.SummaryInfo(alignment)
 		sequence = (alignment[0].seq)  #arbitrarily chose 1st seq to compare all others to
 
-		pssm_sequence = summary_align.pos_specific_score_matrix(sequence)
+		pssm_sequence = summary_align.pos_specific_score_matrix(sequence)#, chars_to_ignore=['N'])
 		#'pssm_sequence' is an obj containing line-by-line [site_identity, -, A, C, G, T]
-
 		count = 0
 		num_invariants = 0
 		invariant_position_index = []
 
 		for site in pssm_sequence.pssm:
 			print site
-			#site is a tuple of site_identity and dict of corresponding PSSM keys=nucleotides, vals=scores
-			gap_score = 0#site[1]['-']
-			A_score   = site[1]['A']
-			C_score   = site[1]['C']
-			G_score   = site[1]['G']
-			T_score   = site[1]['T']
-			site_scores = [gap_score, A_score, C_score, G_score, T_score]  #same order as pssm obj 'pssm_sequence'
-			binary_index = []
-			for score in site_scores:
-				if score > 0:
-					binary_index.append(1)  #simplify with binary (present)
+			if site[0] != '-' and site[1]['-'] == 0:
+				#site is a tuple of site_identity and dict of corresponding PSSM keys=nucleotides, vals=scores
+				gap_score = site[1]['-']
+				A_score   = site[1]['A']
+				C_score   = site[1]['C']
+				G_score   = site[1]['G']
+				T_score   = site[1]['T']
+				N_score   = site[1]['N']
+				site_scores = [gap_score, A_score, C_score, G_score, T_score, N_score]  #same order as pssm obj 'pssm_sequence'
+				binary_index = []
+				for score in site_scores:
+					if score > 0:
+						binary_index.append(1)  #simplify with binary (present)
+					else:
+						binary_index.append(0)  #simplify with binary (absent)
+				if sum(binary_index[1:len(binary_index)]) > 1:
+					pass
+				elif sum(binary_index[1:len(binary_index)]) == 1:
+					num_invariants += 1
+					invariant_position_index.append(count)
 				else:
-					binary_index.append(0)  #simplify with binary (absent)
-			if sum(binary_index[1:len(binary_index)]) > 1:
-				pass
-			elif sum(binary_index[1:len(binary_index)]) == 1:
+					sys.exit('ERROR_1')
+				count += 1
+			elif site[0] == '-' or site[1]['-'] > 0:
 				num_invariants += 1
 				invariant_position_index.append(count)
+				count += 1
 			else:
-				sys.exit('ERROR')
-			count += 1
+				sys.exit('ERROR_2')
 
 	variant_position_index = []
 	for i in range(0, len(sequence)):
