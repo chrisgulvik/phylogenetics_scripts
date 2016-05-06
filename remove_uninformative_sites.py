@@ -15,15 +15,18 @@ from Bio.Nexus import Nexus
 from Bio.Seq import Seq
 
 def parseArgs():
-	parser = argparse.ArgumentParser(description='Converts an aligned FastA file into an aligned Nexus with only variant sites (especially useful for BEAST)')
+	parser = argparse.ArgumentParser(description='Converts an aligned multi-FastA file into a Nexus file with only variant sites.\
+		Gap sites, where no reads mapped, are removed (not SNPs), but\
+		N sites, where reads mapped but failed a quality filter, are maintained as ambiguous.')
 	parser.add_argument('-i', '--infile', help='aligned FastA input file', required=True)
-	parser.add_argument('-o', '--outfile', help='aligned variant-only Nexus output file [cwd-of-input/basename.informative.nex]')
+	parser.add_argument('-o', '--outfile', help='aligned variant-only Nexus output file [cwd-of-infile/basename.informative.nex]')
 	return parser.parse_args()
 
 def get_variant_sites(infile):
 	with open(infile, 'r') as input_handle:
 		aln = AlignIO.read(input_handle, 'fasta')
-		alignment = MultipleSeqAlignment([rec.upper() for rec in aln], annotations=aln.annotations)
+		alignment = MultipleSeqAlignment([rec.upper() for rec in aln],
+			annotations=aln.annotations)
 		summary_align = AlignInfo.SummaryInfo(alignment)
 		sequence = (alignment[0].seq)  #arbitrarily chose 1st seq to compare all others to
 
@@ -70,7 +73,8 @@ def get_variant_sites(infile):
 		if i not in invariant_position_index:
 			variant_position_index.append(i)
 
-	print 'Discarded %s invariant sites' % str(len(invariant_position_index))
+	print 'Discarded {} invariant and gap-containing sites'.format(
+		str(len(invariant_position_index)))
 	return variant_position_index, alignment
 
 def ranges(i):
@@ -82,13 +86,15 @@ def write_variant_sites(alignment, var_sites, outfile):
 	nex_aligns = []  #Bio.Nexus.Nexus.Nexus objects
 	blocks = list(ranges(var_sites))  #tuples of positions
 	for i in blocks:
-		alignment_iteration = MultipleSeqAlignment(alignment[:, i[0]:i[1] + 1], alphabet=generic_dna).format('nexus')
-		nex_aligns.append(('site %s to %s' % (str(i[0]), str(i[1] + 1)), Nexus.Nexus(alignment_iteration)))
+		alignment_iteration = MultipleSeqAlignment(alignment[:, i[0]:i[1] + 1],
+			alphabet=generic_dna).format('nexus')
+		nex_aligns.append(('site {} to {}'.format(str(i[0]), str(i[1] + 1)),
+			Nexus.Nexus(alignment_iteration)))
 
 	combined = Nexus.combine(nex_aligns)
 	with open(outfile, 'w') as out:
 		combined.write_nexus_data(out)
-	print 'Converted %s informative sites into nexus alignment' % str(len(blocks))
+	print 'Converted {} informative sites into nexus alignment'.format(str(len(blocks)))
 
 def main():
 	opts = parseArgs()
