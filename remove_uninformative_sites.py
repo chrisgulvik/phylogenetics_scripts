@@ -39,7 +39,7 @@ def get_variant_sites(infile):
 		num_records = len(alignment)
 		print 'Number of records in multifasta: {}'.format(num_records)
 		for site in pssm_sequence.pssm:
-			sys.stdout.write('.')
+			# sys.stdout.write('.')
 			if site[0] != '-' and site[1]['-'] == 0:
 			#site is a tuple of site_identity and dict of corresponding PSSM keys=nucleotides, vals=scores
 				site_pssm_freqs = []
